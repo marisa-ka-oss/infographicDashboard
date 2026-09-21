@@ -5,7 +5,6 @@ import os
 import pandas as pd
 import plotly.express as px
 import streamlit as st
-from github import Github
 
 # ==========================================
 # 1. ตั้งค่าการแสดงผลของ Streamlit
@@ -16,12 +15,11 @@ st.set_page_config(
     layout="wide"
 )
 
-# กำหนดชื่อไฟล์และอัตราดอกเบี้ย 5.25% ต่อปี
 INPUT_FILE = "condo.txt"
 OUTPUT_FILE = "condo_output.csv"
-ANNUAL_INTEREST_RATE = 0.0525
+ANNUAL_INTEREST_RATE = 0.0525  # อัตราดอกเบี้ย 5.25% ต่อปี
 
-# ข้อมูลตัวอย่างเริ่มต้นตามโจทย์
+# ข้อมูลตัวอย่างเริ่มต้นตามโจทย์ทั้ง 5 คน
 DEFAULT_DATA = [
     ["นายสมชาย ใจดี", 1000000, 5],
     ["นางสาวสุภาวดี มีสุข", 2000000, 10],
@@ -30,9 +28,8 @@ DEFAULT_DATA = [
     ["นายธนกร มั่นคง", 5000000, 25]
 ]
 
-
 # ==========================================
-# 2. ฟังก์ชันจัดการไฟล์และคำนวณสูตรคณิตศาสตร์
+# 2. ฟังก์ชันจัดการไฟล์และคำนวณทางการเงิน
 # ==========================================
 def ensure_input_file():
     """สร้างไฟล์ condo.txt อัตโนมัติหากยังไม่มีในโฟลเดอร์"""
@@ -42,25 +39,22 @@ def ensure_input_file():
             writer.writerow(["ชื่อลูกค้า", "จำนวนเงินต้น", "จำนวนปีที่ผ่อน"])
             writer.writerows(DEFAULT_DATA)
 
-
 def calculate_loan(principal, years, rate=ANNUAL_INTEREST_RATE):
     """คำนวณผ่อนต่อเดือน ยอดชำระรวม และดอกเบี้ยรวมด้วยสูตร Annuity"""
     monthly_rate = rate / 12
     total_months = years * 12
-
+    
     # สูตรคำนวณค่างวดผ่อนต่อเดือน
-    monthly_payment = principal * (monthly_rate * (1 + monthly_rate) ** total_months) / (
-                (1 + monthly_rate) ** total_months - 1)
+    monthly_payment = principal * (monthly_rate * (1 + monthly_rate)**total_months) / ((1 + monthly_rate)**total_months - 1)
     total_payment = monthly_payment * total_months
     total_interest = total_payment - principal
-
+    
     return monthly_payment, total_payment, total_interest
-
 
 def load_and_process_data():
     """อ่าน condo.txt นำมาคำนวณ และสร้าง DataFrame"""
     ensure_input_file()
-
+    
     try:
         df = pd.read_csv(INPUT_FILE, header=None, names=["ชื่อลูกค้า", "จำนวนเงินต้น", "จำนวนปีที่ผ่อน"])
         if not str(df.iloc[0]["จำนวนเงินต้น"]).replace('.', '', 1).isdigit():
@@ -85,42 +79,12 @@ def load_and_process_data():
     df["ดอกเบี้ยรวม"] = interest_list
     df["ยอดชำระรวม"] = total_list
 
-    # บันทึกลง condo_output.csv ท้องถิ่น
+    # บันทึกลง condo_output.csv อัตโนมัติ
     df.to_csv(OUTPUT_FILE, index=False, encoding="utf-8-sig")
     return df
 
-
-def sync_to_github(df):
-    """ส่งไฟล์ condo_output.csv ไปยัง GitHub Repository"""
-    try:
-        if "GITHUB_TOKEN" not in st.secrets or "REPO_NAME" not in st.secrets:
-            return False, "ยังไม่ได้ตั้งค่า GITHUB_TOKEN และ REPO_NAME ใน Secrets"
-
-        github_token = st.secrets["GITHUB_TOKEN"]
-        repo_name = st.secrets["REPO_NAME"]
-
-        g = Github(github_token)
-        repo = g.get_repo(repo_name)
-
-        csv_buffer = io.StringIO()
-        df.to_csv(csv_buffer, index=False, encoding='utf-8-sig')
-        content = csv_buffer.getvalue()
-
-        commit_message = "Update condo_output.csv via Streamlit Dashboard"
-
-        try:
-            contents = repo.get_contents(OUTPUT_FILE)
-            repo.update_file(contents.path, commit_message, content, contents.sha)
-        except Exception:
-            repo.create_file(OUTPUT_FILE, commit_message, content)
-
-        return True, "บันทึกและ Sync ข้อมูลไปยัง GitHub เรียบร้อยแล้ว!"
-    except Exception as e:
-        return False, f"ข้อผิดพลาดจาก GitHub: {e}"
-
-
 # ==========================================
-# 3. โหลดข้อมูลเข้าสู่แอปพลิเคชัน
+# 3. โหลดและประมวลผลข้อมูล
 # ==========================================
 df = load_and_process_data()
 
@@ -155,13 +119,13 @@ st.markdown("<br>", unsafe_allow_html=True)
 # ------------------------------------------
 st.subheader("📈 2. กราฟวิเคราะห์และเปรียบเทียบข้อมูลสินเชื่อคอนโด")
 
-tab1, tab2, tab3 = st.tabs(["สัดส่วนเงินต้น vs ดอกเบี้ย", "เปรียบเทียบผ่อนต่อเดือน", "โครงสร้างภาระหนี้ภาพรวม"])
+tab1, tab2, tab3 = st.tabs(["สัดส่วนเงินต้น vs ดอกเบี้ย", "แนวโน้มการผ่อนต่อเดือน", "สัดส่วนภาระหนี้ภาพรวม"])
 
 with tab1:
     # กราฟแท่งเปรียบเทียบเงินต้นและดอกเบี้ยรวม
     fig_bar = px.bar(
-        df,
-        x="ชื่อลูกค้า",
+        df, 
+        x="ชื่อลูกค้า", 
         y=["จำนวนเงินต้น", "ดอกเบี้ยรวม"],
         title="เปรียบเทียบสัดส่วนเงินต้นและดอกเบี้ยรวมของลูกค้าแต่ละราย",
         labels={"value": "จำนวนเงิน (บาท)", "variable": "องค์ประกอบภาระหนี้"},
@@ -173,8 +137,8 @@ with tab1:
 with tab2:
     # กราฟเส้นแสดงยอดผ่อนต่อเดือนตามจำนวนปี
     fig_line = px.line(
-        df,
-        x="จำนวนปีที่ผ่อน",
+        df, 
+        x="จำนวนปีที่ผ่อน", 
         y="ผ่อนต่อเดือน",
         text="ชื่อลูกค้า",
         markers=True,
@@ -204,7 +168,7 @@ with tab3:
 # ------------------------------------------
 st.subheader("📋 3. ตารางเปรียบเทียบข้อมูลลูกค้า ( condo_output.csv )")
 
-# จัดรูปแบบการแสดงผลตัวเลข
+# จัดรูปแบบการแสดงผลตัวเลขในตาราง
 formatted_df = df.copy()
 formatted_df["จำนวนเงินต้น"] = formatted_df["จำนวนเงินต้น"].map("฿{:,.2f}".format)
 formatted_df["ผ่อนต่อเดือน"] = formatted_df["ผ่อนต่อเดือน"].map("฿{:,.2f}".format)
@@ -213,26 +177,14 @@ formatted_df["ยอดชำระรวม"] = formatted_df["ยอดชำ�
 
 st.dataframe(formatted_df, use_container_width=True)
 
-col_btn1, col_btn2 = st.columns([1, 2])
-
-with col_btn1:
-    # ดาวน์โหลด CSV
-    csv_bytes = df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
-    st.download_button(
-        label="📥 ดาวน์โหลด condo_output.csv",
-        data=csv_bytes,
-        file_name="condo_output.csv",
-        mime="text/csv"
-    )
-
-with col_btn2:
-    # ปุ่มกด Sync ขึ้น GitHub
-    if st.button("☁️ บันทึกและ Sync ข้อมูลไปยัง GitHub Repository"):
-        success, msg = sync_to_github(df)
-        if success:
-            st.success(msg)
-        else:
-            st.warning(msg)
+# ปุ่มดาวน์โหลดไฟล์ CSV
+csv_bytes = df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+st.download_button(
+    label="📥 บันทึก/ดาวน์โหลด condo_output.csv",
+    data=csv_bytes,
+    file_name="condo_output.csv",
+    mime="text/csv"
+)
 
 # ------------------------------------------
 # ส่วนที่ 4: สรุปผลรายงานด้วยสถิติพื้นฐาน
